@@ -9,6 +9,31 @@ HX711_ADC LoadCellA(11, 12);
 HX711_ADC LoadCellB(9, 10);
 HX711_ADC LoadCellC(7, 8);
 
+#include <Wire.h> //for i2c-bus
+#include <LiquidCrystal_I2C.h>
+
+#define I2C_ADDR 0x27 // Display's i2c-address. Use i2c-scanner to search the correct one...
+#define BACKLIGHT_PIN  3
+#define En_pin  2
+#define Rw_pin  1
+#define Rs_pin  0
+#define D4_pin  4
+#define D5_pin  5
+#define D6_pin  6
+#define D7_pin 7
+
+//display
+LiquidCrystal_I2C lcd(I2C_ADDR,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin); 
+
+unsigned int lcd_min_update_interval_ms = 500; //to acoid flickering etc
+
+//lcd update timer (to prevent updating too often, f=0.5 Hz)
+unsigned int t_prev_lcd_update = 0;
+String prevL1, prevL2; //previous lines printed
+byte prevLine;
+
+String buf;
+
 long measure_time;
 
 
@@ -25,11 +50,21 @@ float calFactorDif = 0;
 
 void setup() {
 
+  lcd.begin (16,2); //  chars, lines
+  lcd.setBacklightPin(3,POSITIVE);
+  lcd.home (); 
+  
+  //splash 
+  print2lcd(1,"CG TriScale");
+
+  lcd.setBacklight(HIGH);
+  print2lcd(2,"Init...");
+
   Serial.begin(9600);
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
-  Serial.println("Init...");
+  //Serial.println("Init...");
 
   
   long stabilisingtime = 5000; // tare preciscion can be improved by adding a few seconds of stabilising time
@@ -49,7 +84,9 @@ void setup() {
   // initialize digital pin 13 as an output. heartbeat HEARTBEAT_PIN
   pinMode(HEARTBEAT_PIN, OUTPUT);
   
-  Serial.println("Go!");
+  //Serial.println("Go!");
+
+  
 }
 
 void loop() {
@@ -158,25 +195,41 @@ void loop() {
       case 4:
         float total = a + b + c;
         if( total > 50 ) {
+          lcd.setBacklight(HIGH);     // Backlight on
           float grav = offset + (distance * (c/total));
-          Serial.print(" grav=");
-          Serial.print(grav);
+          //Serial.print(" grav=");
+          //Serial.print(grav);
+          buf = "";
+          buf += F("weight: ");
+          buf += String(total, 1);
+          buf += F("g");
+          print2lcd(1,buf);
+          
+          buf = "";
+          buf += F("CG: ");
+          buf += String(grav, 1);
+          buf += F("mm");         
+          print2lcd(2,buf);
+          
         } else {
-          Serial.print(" empty");
+          lcd.setBacklight(LOW);      // Backlight off
+          //Serial.print(" empty");
+          print2lcd(1,"empty");
+          print2lcd(2,"...");
         }
         
-        Serial.print(" total=");
-        Serial.print(total);
-        Serial.print(" A=");
-        Serial.print(a);
-        Serial.print(" B=");
-        Serial.print(b);
-        Serial.print(" C=");
-        Serial.print(c);
+//        Serial.print(" total=");
+//        Serial.print(total);
+//        Serial.print(" A=");
+//        Serial.print(a);
+//        Serial.print(" B=");
+//        Serial.print(b);
+//        Serial.print(" C=");
+//        Serial.print(c);
         break;
     }
     
-    Serial.println(" ...");
+    //Serial.println(" ...");
         
     measure_time = millis();
 
@@ -185,6 +238,40 @@ void loop() {
 
   
 }
+
+//-----------------------------------------------------------------
+//Functions
+//printing to LCD
+void print2lcd(int line_1_2,String text)
+  {
+  //to avoid updating too often
+  bool update = false;
+  if (line_1_2 != prevLine) update = true;
+  if (line_1_2 == prevLine && ((unsigned int)millis()-t_prev_lcd_update) > lcd_min_update_interval_ms) update = true;
+
+  //check if the contents is changed.. if not --> do not update LCD
+  if (line_1_2 == 1 && text == prevL1) update = false;
+  if (line_1_2 == 2 && text == prevL2) update = false;
+  
+  
+  if (update == true)
+    {
+    //clear line
+    lcd.setCursor(0,line_1_2-1);
+    lcd.print("                "); //..stupid way
+
+    //print mess
+    lcd.setCursor(0,line_1_2-1);
+    lcd.print(text);  
+ 
+    //update timestanp, line number and such
+    prevLine = line_1_2;
+    t_prev_lcd_update = (unsigned int)millis();
+
+    if (line_1_2 == 1) prevL1 = text;
+    if (line_1_2 == 2) prevL2 = text;
+    }
+  }
 
 
 
